@@ -9,7 +9,7 @@ Record image tag for further api requests.
 
 ## config.yaml
 
-Please place config.yaml under the root of pod service.  
+Please place config.yaml under the root of job service.  
 
 config.yaml:  
 ```yaml
