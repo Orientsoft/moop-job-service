@@ -1,7 +1,6 @@
 from __future__ import print_function
 import traceback
 import time
-import os
 import logging
 import logging.handlers
 import sys
@@ -16,13 +15,13 @@ from kubernetes.client.rest import ApiException
 from celery import Celery
 from kombu import Queue
 
+from celery_config import broker_url, result_backend, enable_utc
 import yaml
 
 pp = pprint.PrettyPrinter(indent=4)
 
 # consts
 CONFIG_PATH = './config.yaml'
-CELERY_CONFIG_FILE = 'celery-config'
 
 template = {
     "kind": "Job",
@@ -50,7 +49,7 @@ template = {
     },
     'apiVersion': 'batch/v1',
     'metadata': {
-        "name": "job-{}" # name template - "job-{hash}"
+        "name": "job-{}"  # name template - "job-{hash}"
     }
 }
 
@@ -72,6 +71,7 @@ with open(CONFIG_PATH) as config_file:
 LOG_NAME = 'Job-Service'
 LOG_FORMAT = '%(asctime)s - %(filename)s:%(lineno)s - %(name)s:%(funcName)s - [%(levelname)s] %(message)s'
 
+
 def setup_logger(level):
     handler = logging.StreamHandler(stream=sys.stdout)
     formatter = logging.Formatter(LOG_FORMAT)
@@ -82,6 +82,7 @@ def setup_logger(level):
     logger.setLevel(level)
 
     return logger
+
 
 logger = setup_logger(int(LOG_LEVEL))
 
@@ -97,10 +98,21 @@ api_instance = kubernetes.client.BatchV1Api()
 
 # read config & init objects
 celery = Celery()
-celery.config_from_object(CELERY_CONFIG_FILE)
+
+
+# in docker load config  method
+class Config:
+    broker_url = broker_url
+    result_backend = result_backend
+    enable_utc = enable_utc
+
+
+celery.config_from_object(Config)
+
 celery.conf.task_queues = (
-     Queue('moop-job', routing_key='moop-job'),
+    Queue('moop-job', routing_key='moop-job'),
 )
+
 
 def create_body(cmd, image, vols):
     body = copy.deepcopy(template)
@@ -118,7 +130,7 @@ def create_body(cmd, image, vols):
             # pvc
             volumes.append({
                 'name': vol_names[i],
-                'persistentVolumeClaim': { 'claimName': vol['name'] }
+                'persistentVolumeClaim': {'claimName': vol['name']}
             })
         else:
             # configmap
@@ -126,7 +138,7 @@ def create_body(cmd, image, vols):
                 'name': vol_names[i],
                 'configMap': {
                     'name': vol['name'],
-                    'defaultMode':  420
+                    'defaultMode': 420
                 }
             })
 
@@ -142,6 +154,7 @@ def create_body(cmd, image, vols):
     body['spec']['template']['spec']['volumes'] = volumes
 
     return body
+
 
 @celery.task(max_retries=3, name='job-service:run')
 def run(cmd, image, vols):
@@ -167,12 +180,14 @@ def run(cmd, image, vols):
 
             succeeded = job['status']['succeeded']
             failed = job['status']['failed']
+            delete_body = kubernetes.client.V1DeleteOptions(propagation_policy='Background')
 
             if (succeeded is not None) and (succeeded == 1):
                 # delete
                 job = api_instance.delete_namespaced_job(
                     name=body['metadata']['name'],
-                    namespace=NAMESPACE
+                    namespace=NAMESPACE,
+                    body=delete_body
                 ).to_dict()
 
                 return True
@@ -180,7 +195,8 @@ def run(cmd, image, vols):
                 # delete
                 job = api_instance.delete_namespaced_job(
                     name=body['metadata']['name'],
-                    namespace=NAMESPACE
+                    namespace=NAMESPACE,
+                    body=delete_body
                 ).to_dict()
 
                 return False
@@ -193,7 +209,8 @@ def run(cmd, image, vols):
 
                 job = api_instance.delete_namespaced_job(
                     name=body['metadata']['name'],
-                    namespace=NAMESPACE
+                    namespace=NAMESPACE,
+                    body=delete_body
                 ).to_dict()
 
                 return False
@@ -204,5 +221,5 @@ def run(cmd, image, vols):
     except Exception as e:
         # this might be a bug
         logger.critical('Program Error: {}\nStack: {}\n'.format(e, traceback.format_exc()))
-        
+
         return False

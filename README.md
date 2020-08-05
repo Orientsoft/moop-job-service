@@ -24,11 +24,11 @@ pending_timeout: 60
 pending_interval: 1
 ```
 
-### celery-config.py
+### celery_config.py
 
-Place celery-config.py under the root of job service.
+Place celery_config.py under the root of job service.
 
-celery-config.py:
+celery_config.py:
 ```py
 broker_url = 'redis://:pass@a.b.c.d:6379/0'
 result_backend = 'redis://:pass@a.b.c.d:6379/0'

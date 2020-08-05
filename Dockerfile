@@ -1,17 +1,11 @@
-FROM python:3.6-alpine as base
+FROM python:3.6-alpine
 
-FROM base as builder
-RUN apk add --no-cache gcc musl-dev
-
-RUN mkdir /install
-WORKDIR /install
+WORKDIR /
 COPY requirements.txt /requirements.txt
-RUN pip install --install-option="--prefix=/install" -r /requirements.txt -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+RUN pip install -r /requirements.txt -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 
-FROM base
-COPY --from=builder /install /usr/local
 WORKDIR /app
-COPY pod-service.py ./
-# COPY config.yaml .
+COPY job-service.py ./
+COPY start-worker.sh ./
 
-CMD [ "python", "pod-service.py" ]
+ENTRYPOINT ["./start-worker.sh"]
